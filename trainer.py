@@ -1,6 +1,7 @@
 import numpy as np
 import time
 import torch
+import os
 
 from tqdm import tqdm
 import wandb
@@ -10,11 +11,12 @@ from torchmetrics.classification import BinaryAUROC, BinaryConfusionMatrix, Bina
 
 
 class Trainer:
-    def __init__(self, config, model, criterion, optimizer):
+    def __init__(self, config, model, criterion, optimizer, scheduler):
         self.config = config
         self.model = model
         self.criterion = criterion
         self.optimizer = optimizer
+        self.scheduler = scheduler
 
         self.device = config['device']
         self.global_step = 0
@@ -25,6 +27,7 @@ class Trainer:
         self.ys = []
         self.y_preds = []
         self.losses = []
+        self.best_auroc = 0
 
     def update_metrics(self, y_pred, y, loss):
         # move variables to cpu
@@ -41,18 +44,24 @@ class Trainer:
 
     def log_metrics(self, train):
         # log loss
-        wandb.log({f"{'train' if train else 'valid'}_loss": np.mean(self.losses), 'epoch': self.global_epoch})
+        wandb.log({f"{train}_loss": np.mean(self.losses), 'epoch': self.global_epoch})
 
         # calculate metrics over all batches
         metrics = self.metrics.compute()
 
         # log metrics
         for metric in ['BinaryAccuracy', 'BinaryRecall', 'BinaryPrecision', 'BinaryF1Score', 'BinaryAUROC']:
-            wandb.log({f"{'train' if train else 'valid'}_{metric}": metrics[metric], 'epoch': self.global_epoch})
+            wandb.log({f"{train}_{metric}": metrics[metric], 'epoch': self.global_epoch})
 
+        # save the model's weights if train is valid and BinaryAUROC is higher than previous
+        if train == 'valid' and metrics['BinaryAUROC'] > self.best_auroc:
+            print(f'valid BinaryAUROC is improved, saving the model, epoch {self.global_epoch}')
+            torch.save(self.model.state_dict(), os.path.join(wandb.run.dir, 'model.pth'))
+
+        # TODO Finish Confusion Matrix and ROC curve
         # concat array of tensors to tensor
-        y_true = torch.cat(self.ys).tolist()
-        preds = torch.cat(self.y_preds).tolist()
+        # y_true = torch.cat(self.ys).tolist()
+        # preds = torch.cat(self.y_preds).tolist()
 
         # log confusion matrix
         # wandb.log({'conf_mat': wandb.plot.confusion_matrix(y_true=y_true, probs=preds,
@@ -67,6 +76,7 @@ class Trainer:
         self.y_preds = []
         self.losses = []
         self.metrics.reset()
+        self.best_auroc = 0
 
     def train_epoch(self, data_loader):
         # set model to train mode
@@ -86,6 +96,12 @@ class Trainer:
             # log batch loss
             wandb.log({'batch_loss': loss.item(), 'step': self.global_step})
             self.global_step += 1
+
+        # log learning rate
+        wandb.log({'learning_rate': self.optimizer.param_groups[0]['lr'], 'epoch': self.global_epoch})
+
+        # update learning rate
+        self.scheduler.step()
 
     def validate_epoch(self, data_loader):
 
@@ -117,12 +133,12 @@ class Trainer:
 
             # validate and log on train data
             self.validate_epoch(train_loader)
-            self.log_metrics(train=True)
+            self.log_metrics(train='train')
             self.reset_metrics()
 
             # validate and log on valid data
             self.validate_epoch(valid_loader)
-            self.log_metrics(train=False)
+            self.log_metrics(train='valid')
             self.reset_metrics()
 
             self.global_epoch += 1
@@ -130,3 +146,11 @@ class Trainer:
         # print training time
         time_elapsed = time.time() - since
         print('Training complete in {:.0f}m {:.0f}s'.format(time_elapsed // 60, time_elapsed % 60))
+
+    def evaluate(self, data_loaders):
+        for el in data_loaders:
+            print(el)
+
+            self.validate_epoch(data_loaders[el])
+            self.log_metrics(train=el)
+            self.reset_metrics()

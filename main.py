@@ -3,6 +3,7 @@ import wandb
 import torch
 from torch.nn import BCEWithLogitsLoss
 from torch.utils.data import DataLoader
+from torch.optim.lr_scheduler import ExponentialLR
 from torchvision import transforms
 
 from utils import build_model
@@ -35,12 +36,13 @@ def run_experiment(model_name, pretrained):
     # all changeable parameters should be specified here
     wandb.config.update({
         'batch_size': 32,
-        'num_epochs': 50,
+        'num_epochs': 30,
         'threshold': 0.5,
         'loss': 'BCE',
         'model_name': model_name,   # 'swin'/'vit' + '_'  + 'small', 'tiny', 'base' || 'resnet' + '18'/'50'
-        'lr': 10 ** -5,
-        'weight_decay': 0.1,
+        'lr': 0.000001,
+        'weight_decay': 0.001,
+        'gamma': 0.93,
         'freeze': False,
         'freeze_until': 'layer3',
         'device': 'cuda',
@@ -70,8 +72,11 @@ def run_experiment(model_name, pretrained):
     optimizer = torch.optim.Adam(params=model.parameters(), lr=wandb.config['lr'],
                                  weight_decay=wandb.config['weight_decay'])
 
+    # set up scheduler
+    scheduler = ExponentialLR(optimizer, gamma=wandb.config['gamma'])
+
     # create and run trainer
-    Trainer(config=wandb.config, model=model, criterion=criterion, optimizer=optimizer).run(
+    Trainer(config=wandb.config, model=model, criterion=criterion, optimizer=optimizer, scheduler=scheduler).run(
         train_loader, valid_loader
     )
 
@@ -82,7 +87,10 @@ if __name__ == '__main__':
     wandb.init(project="hn_miccai", entity="meridk")
 
     # 'resnet18/50/152' 'swin_small/tiny/base' 'vit_small/tiny/base'
-    run_experiment(model_name='vit_tiny', pretrained=True)
+    run_experiment(model_name='vit_base', pretrained=False)
+
+    # save the model to wandb
+    wandb.save('model.pth')
 
     # explicitly end wandb
     wandb.finish()
