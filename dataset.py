@@ -1,17 +1,16 @@
 from torch.utils.data import Dataset
 import pandas as pd
 from PIL import Image
-import os
 import numpy as np
 
 
 class KidneyDataset(Dataset):
-    def __init__(self, path, transform):
-        self.data_path = '/home/mrizhko/hn_miccai/data/'
+    def __init__(self, csv_path, data_path, transform):
+        self.data_path = data_path
         self.transform = transform
 
         # read csv data
-        self.df = pd.read_csv(self.data_path + path)
+        self.df = pd.read_csv(self.data_path + csv_path)
 
     def __len__(self):
         return len(self.df)
@@ -21,21 +20,28 @@ class KidneyDataset(Dataset):
         surgery = self.df['surgery'][idx]
         img_path = self.df['sag'][idx]
 
-        # open image
-        img = Image.open(self.data_path + img_path)
+        # read image and convert it to rgb
+        img = process_image(self.data_path + img_path)
 
-        # if image is grey or rgba change it to rgb
-        if img.mode == 'L':
-            arr = np.asarray(img)
-            arr = np.repeat(arr[:, :, np.newaxis], 3, axis=2)
-            img = Image.fromarray(arr)
-        elif img.mode == 'RGBA':
-            arr = np.asarray(img)
-            arr = arr[:, :, :3]
-            img = Image.fromarray(arr)
-
-        # apply augmentations
+        # transform image
         img = self.transform(img)
 
         # return img (X) and surgery (y)
         return img, surgery
+
+
+def process_image(img_path):
+    # open image
+    img = Image.open(img_path)
+
+    # if image is grey or rgba change it to rgb
+    if img.mode == 'L':
+        arr = np.asarray(img)
+        arr = np.repeat(arr[:, :, np.newaxis], 3, axis=2)
+        img = Image.fromarray(arr)
+    elif img.mode == 'RGBA':
+        arr = np.asarray(img)
+        arr = arr[:, :, :3]
+        img = Image.fromarray(arr)
+
+    return img
