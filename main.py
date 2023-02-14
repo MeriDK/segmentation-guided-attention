@@ -1,4 +1,5 @@
 import wandb
+import os
 
 import torch
 from torch.nn import BCEWithLogitsLoss
@@ -25,7 +26,7 @@ def run_experiment(model_name, pretrained):
             transforms.ToTensor(),
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
         ]),
-        'val': transforms.Compose([
+        'valid': transforms.Compose([
             transforms.Resize(256),
             transforms.CenterCrop(224),
             transforms.ToTensor(),
@@ -47,7 +48,8 @@ def run_experiment(model_name, pretrained):
         'freeze_until': 'layer3',
         'device': 'cuda',
         'pretrained': pretrained,
-        'data_transforms': data_transforms
+        'data_transforms': data_transforms,
+        'data_path': '/home/mrizhko/hn_miccai/data/'
     })
 
     # setup model
@@ -55,8 +57,8 @@ def run_experiment(model_name, pretrained):
     model = model.to(wandb.config['device'])
 
     # create train and valid datasets
-    train_dataset = KidneyDataset('SickKids_train.csv', data_transforms['train'])
-    valid_dataset = KidneyDataset('SickKids_valid.csv', data_transforms['train'])
+    train_dataset = KidneyDataset('SickKids_train.csv', wandb.config['data_path'], data_transforms['train'])
+    valid_dataset = KidneyDataset('SickKids_valid.csv', wandb.config['data_path'], data_transforms['valid'])
 
     # pass datasets to pytorch loaders
     train_loader = DataLoader(train_dataset, batch_size=wandb.config['batch_size'])
@@ -84,13 +86,13 @@ def run_experiment(model_name, pretrained):
 if __name__ == '__main__':
 
     # init wandb
-    wandb.init(project="hn_miccai", entity="meridk")
+    wandb.init(project="test", entity="meridk")
 
     # 'resnet18/50/152' 'swin_small/tiny/base' 'vit_small/tiny/base'
-    run_experiment(model_name='vit_base', pretrained=False)
+    run_experiment(model_name='vit_base', pretrained=True)
 
     # save the model to wandb
-    wandb.save('model.pth')
+    wandb.save(os.path.join(wandb.run.dir, 'model.pth'))
 
     # explicitly end wandb
     wandb.finish()

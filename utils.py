@@ -1,4 +1,21 @@
 import timm
+import cv2
+import numpy as np
+import pandas as pd
+import timm
+import torch
+from torch import nn
+from collections import OrderedDict
+from PIL import Image
+import os
+from torchvision import transforms, models
+import matplotlib.pyplot as plt
+from pathlib import Path
+
+from pytorch_grad_cam import GradCAM
+from pytorch_grad_cam.utils.model_targets import ClassifierOutputTarget, BinaryClassifierOutputTarget
+from pytorch_grad_cam.utils.image import show_cam_on_image
+from dataset import process_image
 
 
 def build_model(config):
@@ -21,3 +38,13 @@ def build_model(config):
         timm.freeze(model, submodules[:submodules.index(config['freeze_until']) + 1])
 
     return model
+
+
+def reshape_transform(tensor, height=14, width=14):
+    result = tensor[:, 1:, :].reshape(tensor.size(0), height, width, tensor.size(2))
+
+    # Bring the channels to the first dimension,
+    # like in CNNs.
+    result = result.transpose(2, 3).transpose(1, 2)
+
+    return result
