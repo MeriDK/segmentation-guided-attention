@@ -4,9 +4,8 @@ import os
 import torch
 from torch.nn import BCEWithLogitsLoss
 from torch.utils.data import DataLoader
-from torchvision import transforms
 
-from utils import build_model
+from utils import build_model, get_transformations
 from dataset import KidneyDataset
 from trainer import Trainer
 
@@ -17,21 +16,7 @@ def run_evaluation(run_path):
     torch.manual_seed(42)
 
     # set up augmentation
-    data_transforms = {
-        'train': transforms.Compose([
-            transforms.RandomRotation(degrees=(-30, 30)),
-            transforms.RandomResizedCrop(224, ratio=(1.0, 1.0), scale=(0.9, 1.0)),
-            transforms.RandomHorizontalFlip(),
-            transforms.ToTensor(),
-            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-        ]),
-        'valid': transforms.Compose([
-            transforms.Resize(256),
-            transforms.CenterCrop(224),
-            transforms.ToTensor(),
-            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-        ]),
-    }
+    data_transforms = get_transformations()
 
     # update data_transforms because it's saved in the wrong format
     wandb.config['data_transforms']['train'] = data_transforms['train']
@@ -48,16 +33,16 @@ def run_evaluation(run_path):
     model = model.to(wandb.config['device'])
 
     # create train and valid datasets
-    train_dataset = KidneyDataset('SickKids_train.csv', wandb.config['data_path'], data_transforms['valid'])
-    valid_dataset = KidneyDataset('SickKids_valid.csv', wandb.config['data_path'], data_transforms['valid'])
+    train_dataset = KidneyDataset('SickKids_train_seg.csv', wandb.config['data_path'], data_transforms['valid'])
+    valid_dataset = KidneyDataset('SickKids_valid_seg.csv', wandb.config['data_path'], data_transforms['valid'])
 
     # create other datasets
-    test = KidneyDataset('SickKids_test.csv', wandb.config['data_path'], data_transforms['valid'])
-    stanford = KidneyDataset('Stanford.csv', wandb.config['data_path'], data_transforms['valid'])
-    chop = KidneyDataset('CHOP.csv', wandb.config['data_path'], data_transforms['valid'])
-    ui = KidneyDataset('UI.csv', wandb.config['data_path'], data_transforms['valid'])
-    silent = KidneyDataset('Prospective.csv', wandb.config['data_path'], data_transforms['valid'])
-    prenatal = KidneyDataset('Prenatal.csv', wandb.config['data_path'], data_transforms['valid'])
+    test = KidneyDataset('SickKids_test_seg.csv', wandb.config['data_path'], data_transforms['valid'])
+    stanford = KidneyDataset('Stanford_seg.csv', wandb.config['data_path'], data_transforms['valid'])
+    chop = KidneyDataset('CHOP_seg.csv', wandb.config['data_path'], data_transforms['valid'])
+    ui = KidneyDataset('UI_seg.csv', wandb.config['data_path'], data_transforms['valid'])
+    silent = KidneyDataset('Prospective_seg.csv', wandb.config['data_path'], data_transforms['valid'])
+    prenatal = KidneyDataset('Prenatal_seg.csv', wandb.config['data_path'], data_transforms['valid'])
 
     # pass datasets to pytorch loaders
     train_loader = DataLoader(train_dataset, batch_size=wandb.config['batch_size'])
@@ -92,7 +77,7 @@ def run_evaluation(run_path):
 
 if __name__ == '__main__':
 
-    run_path = 'hn_miccai/runs/djez96jw'
+    run_path = 'test/runs/wysu3e22'
     print(f'Evaluating run {run_path}')
 
     # restore wandb config

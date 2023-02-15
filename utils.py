@@ -1,21 +1,6 @@
 import timm
-import cv2
-import numpy as np
-import pandas as pd
-import timm
-import torch
-from torch import nn
-from collections import OrderedDict
-from PIL import Image
-import os
-from torchvision import transforms, models
-import matplotlib.pyplot as plt
-from pathlib import Path
-
-from pytorch_grad_cam import GradCAM
-from pytorch_grad_cam.utils.model_targets import ClassifierOutputTarget, BinaryClassifierOutputTarget
-from pytorch_grad_cam.utils.image import show_cam_on_image
-from dataset import process_image
+import albumentations as A
+import albumentations.pytorch
 
 
 def build_model(config):
@@ -48,3 +33,23 @@ def reshape_transform(tensor, height=14, width=14):
     result = result.transpose(2, 3).transpose(1, 2)
 
     return result
+
+
+def get_transformations():
+    data_transforms = {
+        'train': A.Compose([
+            A.Rotate(limit=30),
+            A.RandomResizedCrop(224, 224, ratio=(1.0, 1.0), scale=(0.9, 1.0)),
+            A.HorizontalFlip(),
+            A.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+            A.pytorch.transforms.ToTensorV2()
+        ]),
+        'valid': A.Compose([
+            A.Resize(256, 256),
+            A.CenterCrop(224, 224),
+            A.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+            A.pytorch.transforms.ToTensorV2()
+        ]),
+    }
+
+    return data_transforms

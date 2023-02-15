@@ -84,7 +84,7 @@ class Trainer:
         # set model to train mode
         self.model.train()
 
-        for i, (X, y) in enumerate(tqdm(data_loader)):
+        for i, (X, y, mask) in enumerate(tqdm(data_loader)):
 
             # calculate y_pred and loss
             y_pred = self.model(X.to(self.device)).reshape(-1)
@@ -110,7 +110,7 @@ class Trainer:
         # set model to evaluation mode
         self.model.eval()
 
-        for i, (X, y) in enumerate(tqdm(data_loader)):
+        for i, (X, y, mask) in enumerate(tqdm(data_loader)):
             with torch.no_grad():
                 # calculate y_pred
                 y_pred = self.model(X.to(self.device)).reshape(-1)
@@ -187,7 +187,7 @@ class Trainer:
                 ys.append(data[el][i][3])
 
                 # create tensor of image
-                transformed_img = self.config['data_transforms']['valid'](img)
+                transformed_img = self.config['data_transforms']['valid'](image=np.asarray(img))['image']
                 transformed_imgs.append(transformed_img)
 
                 # create np array of image

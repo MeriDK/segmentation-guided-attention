@@ -16,18 +16,28 @@ class KidneyDataset(Dataset):
         return len(self.df)
 
     def __getitem__(self, idx):
-        # get surgery and path info
+        # get surgery, path and maks info
         surgery = self.df['surgery'][idx]
         img_path = self.df['sag'][idx]
+        mask_path = self.df['sag_kseg'][idx]
 
-        # read image and convert it to rgb
+        # read image, convert it to rgb and convert it into np array
         img = process_image(self.data_path + img_path)
+        img = np.asarray(img)
 
-        # transform image
-        img = self.transform(img)
+        # read mask if it exists otherwise create mask with all zeros
+        if type(mask_path) is str:
+            mask = process_mask(self.data_path + mask_path)
+        else:
+            mask = np.zeros((img.shape[0], img.shape[1]))
 
-        # return img (X) and surgery (y)
-        return img, surgery
+        # transform image and mask
+        transformed = self.transform(image=img, mask=mask)
+        img = transformed['image']
+        mask = transformed['mask']
+
+        # return img (X), surgery (y) and mask
+        return img, surgery, mask
 
 
 def process_image(img_path):
@@ -45,3 +55,24 @@ def process_image(img_path):
         img = Image.fromarray(arr)
 
     return img
+
+
+def process_mask(mask_path):
+    # open mask image
+    img = Image.open(mask_path)
+
+    # transform mask to numpy array
+    array_img = np.asarray(img)
+
+    # select rgb channels
+    r = array_img[:, :, 0].reshape(-1)
+    g = array_img[:, :, 1].reshape(-1)
+    b = array_img[:, :, 2].reshape(-1)
+
+    # check which pixels are red rgb = (236, 28, 36)
+    mask = (np.where(r == 236, 1, 0) * np.where(g == 28, 1, 0) * np.where(b == 36, 1, 0))
+
+    # reshape mask to 2d array
+    mask = mask.reshape((array_img.shape[0], array_img.shape[1]))
+
+    return mask

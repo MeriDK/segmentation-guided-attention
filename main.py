@@ -5,9 +5,8 @@ import torch
 from torch.nn import BCEWithLogitsLoss
 from torch.utils.data import DataLoader
 from torch.optim.lr_scheduler import ExponentialLR
-from torchvision import transforms
 
-from utils import build_model
+from utils import build_model, get_transformations
 from dataset import KidneyDataset
 from trainer import Trainer
 
@@ -18,26 +17,12 @@ def run_experiment(model_name, pretrained):
     torch.manual_seed(42)
 
     # set up augmentation
-    data_transforms = {
-        'train': transforms.Compose([
-            transforms.RandomRotation(degrees=(-30, 30)),
-            transforms.RandomResizedCrop(224, ratio=(1.0, 1.0), scale=(0.9, 1.0)),
-            transforms.RandomHorizontalFlip(),
-            transforms.ToTensor(),
-            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-        ]),
-        'valid': transforms.Compose([
-            transforms.Resize(256),
-            transforms.CenterCrop(224),
-            transforms.ToTensor(),
-            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-        ]),
-    }
+    data_transforms = get_transformations()
 
     # all changeable parameters should be specified here
     wandb.config.update({
         'batch_size': 32,
-        'num_epochs': 30,
+        'num_epochs': 3,
         'threshold': 0.5,
         'loss': 'BCE',
         'model_name': model_name,   # 'swin'/'vit' + '_'  + 'small', 'tiny', 'base' || 'resnet' + '18'/'50'
@@ -57,8 +42,8 @@ def run_experiment(model_name, pretrained):
     model = model.to(wandb.config['device'])
 
     # create train and valid datasets
-    train_dataset = KidneyDataset('SickKids_train.csv', wandb.config['data_path'], data_transforms['train'])
-    valid_dataset = KidneyDataset('SickKids_valid.csv', wandb.config['data_path'], data_transforms['valid'])
+    train_dataset = KidneyDataset('SickKids_train_seg.csv', wandb.config['data_path'], data_transforms['train'])
+    valid_dataset = KidneyDataset('SickKids_valid_seg.csv', wandb.config['data_path'], data_transforms['valid'])
 
     # pass datasets to pytorch loaders
     train_loader = DataLoader(train_dataset, batch_size=wandb.config['batch_size'])
@@ -89,7 +74,7 @@ if __name__ == '__main__':
     wandb.init(project="test", entity="meridk")
 
     # 'resnet18/50/152' 'swin_small/tiny/base' 'vit_small/tiny/base'
-    run_experiment(model_name='vit_base', pretrained=True)
+    run_experiment(model_name='resnet18', pretrained=True)
 
     # save the model to wandb
     wandb.save(os.path.join(wandb.run.dir, 'model.pth'))
