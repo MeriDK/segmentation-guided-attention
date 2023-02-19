@@ -70,7 +70,7 @@ def process_mask(mask_path):
     b = array_img[:, :, 2].reshape(-1)
 
     # check which pixels are red rgb = (236, 28, 36)
-    mask = (np.where(r == 236, 1, 0) * np.where(g == 28, 1, 0) * np.where(b == 36, 1, 0))
+    mask = (np.where(np.isin(r, range(200, 250)), 1, 0) * np.where(np.isin(g, range(15, 35)), 1, 0) * np.where(np.isin(b, range(26, 46)), 1, 0))
 
     # reshape mask to 2d array
     mask = mask.reshape((array_img.shape[0], array_img.shape[1]))
