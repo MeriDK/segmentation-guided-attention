@@ -4,10 +4,12 @@ import os
 import torch
 from torch.nn import BCEWithLogitsLoss
 from torch.utils.data import DataLoader
+from pytorch_grad_cam import GradCAM
 
-from utils import build_model, get_transformations
+from utils import build_model, get_transformations, setup_criterion
 from dataset import KidneyDataset
 from trainer import Trainer
+from loss import AttentionLoss
 
 
 def run_evaluation(run_path):
@@ -57,10 +59,7 @@ def run_evaluation(run_path):
     prenatal_loader = DataLoader(prenatal, batch_size=wandb.config['batch_size'])
 
     # set up loss function
-    if wandb.config['loss'] == 'BCE':
-        criterion = BCEWithLogitsLoss()
-    else:
-        raise NotImplementedError(f'Unknown loss')
+    criterion = setup_criterion(wandb.config, model)
 
     # create and run trainer
     Trainer(config=wandb.config, model=model, criterion=criterion, optimizer=None, scheduler=None).evaluate({
@@ -77,7 +76,7 @@ def run_evaluation(run_path):
 
 if __name__ == '__main__':
 
-    run_path = 'test/runs/wysu3e22'
+    run_path = 'test/runs/kkopyjka'
     print(f'Evaluating run {run_path}')
 
     # restore wandb config

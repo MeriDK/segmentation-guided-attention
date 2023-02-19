@@ -85,24 +85,41 @@ class Trainer:
         self.model.train()
 
         for i, (X, y, mask) in enumerate(tqdm(data_loader)):
+            # move everything to cuda
+            X = X.to(self.device)
+            y = y.to(self.device)
+            mask = mask.to(self.device)
 
-            # calculate y_pred and loss
-            y_pred = self.model(X.to(self.device)).reshape(-1)
-            loss = self.criterion(y_pred, y.to(self.device).float())
+            # calculate y_pred
+            y_pred = self.model(X).reshape(-1)
 
-            # model optimization
+            # calculate loss and optimize model
             self.model.zero_grad()
-            loss.backward()
+
+            if self.config['loss'] == 'BCEAttention':
+                loss1 = self.criterion[0](y_pred, y.float())
+                loss2 = self.criterion[1](X, y_pred, mask)
+                loss = loss1 + loss2
+                loss.backward()
+
+                wandb.log({'batch_loss_bce': loss1.item(), 'step': self.global_step})
+                wandb.log({'batch_loss_attn': loss2.item(), 'step': self.global_step})
+            else:
+                if self.config['loss'] == 'BCE':
+                    loss = self.criterion(y_pred, y.float())
+                else:   # 'AttentionLoss'
+                    loss = self.criterion(X, y_pred, mask)
+
+                loss.backward()
+
             self.optimizer.step()
 
             # log batch loss
             wandb.log({'batch_loss': loss.item(), 'step': self.global_step})
             self.global_step += 1
 
-        # log learning rate
+        # log learning rate and update learning rate
         wandb.log({'learning_rate': self.optimizer.param_groups[0]['lr'], 'epoch': self.global_epoch})
-
-        # update learning rate
         self.scheduler.step()
 
     def validate_epoch(self, data_loader):
@@ -112,17 +129,26 @@ class Trainer:
 
         for i, (X, y, mask) in enumerate(tqdm(data_loader)):
             with torch.no_grad():
-                # calculate y_pred
-                y_pred = self.model(X.to(self.device)).reshape(-1)
-
-                # move y to cuda
+                # move everything to cuda
+                X = X.to(self.device)
                 y = y.to(self.device)
+                mask = mask.to(self.device)
 
-                # calculate loss
+                # calculate y_pred
+                y_pred = self.model(X).reshape(-1)
+
+            # calculate loss
+            if self.config['loss'] == 'BCEAttention':
+                loss1 = self.criterion[0](y_pred, y.float())
+                loss2 = self.criterion[1](X, y_pred, mask)
+                loss = loss1 + loss2
+            elif self.config['loss'] == 'BCE':
                 loss = self.criterion(y_pred, y.float())
+            else:   # 'AttentionLoss'
+                loss = self.criterion(X, y_pred, mask)
 
-                # add batch predictions, ground truth and loss to metrics
-                self.update_metrics(y_pred.sigmoid(), y, loss.item())
+            # add batch predictions, ground truth and loss to metrics
+            self.update_metrics(y_pred.sigmoid(), y, loss.item())
 
     def run(self, train_loader, valid_loader):
         since = time.time()
