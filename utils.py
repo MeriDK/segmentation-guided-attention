@@ -1,6 +1,9 @@
 import timm
 import albumentations as A
 import albumentations.pytorch
+from gradcam import GCAM
+from torch.nn import BCEWithLogitsLoss
+from loss import AttentionLoss
 
 
 def build_model(config):
@@ -53,3 +56,34 @@ def get_transformations():
     }
 
     return data_transforms
+
+
+def create_cam(model, model_name):
+
+    if model_name.startswith('resnet'):
+        target_layer = model.layer4[-1]
+        cam = GCAM(model, target_layer, use_cuda=True)
+    else:
+        target_layer = [model.blocks[-1].norm1]
+        cam = GCAM(model, target_layer, use_cuda=True, reshape_transform=reshape_transform)
+
+    return cam
+
+
+def setup_criterion(config, model):
+    if config['loss'] == 'BCE':
+        criterion = BCEWithLogitsLoss()
+    elif config['loss'] == 'AttentionLoss':
+        cam = create_cam(model, config['model_name'])
+        criterion = AttentionLoss(cam)
+    elif config['loss'] == 'BCEAttention':
+        criterion1 = BCEWithLogitsLoss()
+
+        cam = create_cam(model, config['model_name'])
+        criterion2 = AttentionLoss(cam)
+
+        criterion = [criterion1, criterion2]
+    else:
+        raise NotImplementedError(f'Unknown loss')
+
+    return criterion
