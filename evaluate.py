@@ -10,12 +10,19 @@ from utils import build_model, get_transformations, setup_criterion
 from dataset import KidneyDataset
 from trainer import Trainer
 from loss import AttentionLoss
+import random
+import numpy as np
+
+
+# set up random seed for reproducibility
+torch.manual_seed(42)
+random.seed(42)
+np.random.seed(42)
+os.environ['CUBLAS_WORKSPACE_CONFIG'] = ':4096:8'
+torch.use_deterministic_algorithms(True)
 
 
 def run_evaluation(run_path):
-
-    # set up random seed for reproducibility
-    torch.manual_seed(42)
 
     # set up augmentation
     data_transforms = get_transformations()
@@ -76,14 +83,14 @@ def run_evaluation(run_path):
 
 if __name__ == '__main__':
 
-    run_path = 'test/runs/kkopyjka'
+    run_path = 'hn_miccai_final_eval/runs/pq9gvq01'
     print(f'Evaluating run {run_path}')
 
     # restore wandb config
     config_path = wandb.restore('config.yaml', run_path=run_path)
 
     # init wandb using config above
-    wandb.init(project='test', entity='meridk', config=config_path.name)
+    wandb.init(project='hn_miccai_final_eval', entity='meridk', config=config_path.name)
 
     # delete config file
     os.remove(config_path.name)
