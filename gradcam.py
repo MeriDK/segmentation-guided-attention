@@ -5,7 +5,7 @@ import torch
 def scale_cam(cam, size):
     cam = (cam - cam.min()) / (1e-7 + cam.max())
     cam = cam[None, :, :, :]
-    cam = torch.nn.functional.interpolate(cam, size, mode='bilinear')
+    cam = torch.nn.functional.interpolate(cam, size)#, mode='bilinear')
     cam = cam.squeeze()
 
     return cam
