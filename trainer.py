@@ -8,14 +8,15 @@ from tqdm import tqdm
 import wandb
 from torchmetrics import MetricCollection
 from torchmetrics.classification import BinaryAccuracy, BinaryRecall, BinaryPrecision, BinaryF1Score
-from torchmetrics.classification import BinaryAUROC, BinaryConfusionMatrix, BinaryROC
+from torchmetrics.classification import BinaryAUROC, BinaryConfusionMatrix, BinaryROC, BinaryAveragePrecision
 from dataset import process_image
 from pytorch_grad_cam import GradCAM
 from pytorch_grad_cam.utils.model_targets import ClassifierOutputTarget, BinaryClassifierOutputTarget
 from pytorch_grad_cam.utils.image import show_cam_on_image
 import matplotlib.pyplot as plt
 from PIL import Image
-from utils import reshape_transform
+from utils import reshape_transform, attention_accuracy
+from dataset import process_mask
 
 
 class Trainer:
@@ -32,7 +33,7 @@ class Trainer:
         self.best_auroc = 0
 
         self.metrics = MetricCollection([BinaryAccuracy(), BinaryRecall(), BinaryPrecision(),
-                                         BinaryF1Score(), BinaryAUROC()])
+                                         BinaryF1Score(), BinaryAUROC(), BinaryAveragePrecision()])
         self.ys = []
         self.y_preds = []
         self.losses = []
@@ -58,7 +59,8 @@ class Trainer:
         metrics = self.metrics.compute()
 
         # log metrics
-        for metric in ['BinaryAccuracy', 'BinaryRecall', 'BinaryPrecision', 'BinaryF1Score', 'BinaryAUROC']:
+        for metric in ['BinaryAccuracy', 'BinaryRecall', 'BinaryPrecision', 'BinaryF1Score', 'BinaryAUROC',
+                       'BinaryAveragePrecision']:
             wandb.log({f"{train}_{metric}": metrics[metric], 'epoch': self.global_epoch})
 
         # TODO Finish Confusion Matrix and ROC curve
@@ -93,25 +95,24 @@ class Trainer:
             # calculate y_pred
             y_pred = self.model(X).reshape(-1)
 
-            # calculate loss and optimize model
-            self.model.zero_grad()
-
             if self.config['loss'] == 'BCEAttention':
                 loss1 = self.criterion[0](y_pred, y.float())
                 loss2 = self.criterion[1](X, y_pred, mask)
                 loss = loss1 + loss2
-                loss.backward()
 
                 wandb.log({'batch_loss_bce': loss1.item(), 'step': self.global_step})
                 wandb.log({'batch_loss_attn': loss2.item(), 'step': self.global_step})
+            elif self.config['loss'] == 'BCE' and self.config['data_type'] == '_seg_n_seg_only':
+                loss = self.criterion[0](y_pred, y.float())
             else:
                 if self.config['loss'] == 'BCE':
                     loss = self.criterion(y_pred, y.float())
                 else:   # 'AttentionLoss'
                     loss = self.criterion(X, y_pred, mask)
 
-                loss.backward()
-
+            # calculate loss and optimize model
+            self.model.zero_grad()
+            loss.backward()
             self.optimizer.step()
 
             # log batch loss
@@ -157,10 +158,23 @@ class Trainer:
             print('Epoch:', epoch)
 
             # train epoch
-            self.train_epoch(train_loader)
+            if self.config['data_type'] in ('_seg', '_seg_only'):
+                self.train_epoch(train_loader)
+            else:   # '_seg_n_seg_only'
+                # train on full dataset first
+                self.config.update({'loss': 'BCE'}, allow_val_change=True)
+                self.train_epoch(train_loader[0])
+
+                # train on dataset with masks and BCEAttention loss
+                self.config.update({'loss': 'BCEAttention'}, allow_val_change=True)
+                self.train_epoch(train_loader[1])
 
             # validate and log on train data
-            self.validate_epoch(train_loader)
+            if self.config['data_type'] in ('_seg', '_seg_only'):
+                self.validate_epoch(train_loader)
+            else:   # '_seg_n_seg_only'
+                self.validate_epoch(train_loader[0])
+
             self.log_metrics(train='train')
             self.reset_metrics()
 
@@ -170,7 +184,7 @@ class Trainer:
             self.reset_metrics()
 
             # save the model's weights if BinaryAUROC is higher than previous
-            if wandb.run.summary['valid_BinaryAUROC'] > self.best_auroc:
+            if self.config['save_weights'] and wandb.run.summary['valid_BinaryAUROC'] > self.best_auroc:
                 print(f'valid BinaryAUROC is improved {round(self.best_auroc, 4)} => '
                       f'{round(wandb.run.summary["valid_BinaryAUROC"], 4)}, '
                       f'saving the model, epoch {self.global_epoch}')
@@ -187,7 +201,7 @@ class Trainer:
     def evaluate(self, data_loaders):
         self.model.eval()
 
-        with open(self.config['data_path'] + 'segmentations2.json', 'r') as f:
+        with open(self.config['data_path'] + 'segmentations3.json', 'r') as f:
             data = json.loads(f.read())
 
         # Construct the CAM object once, and then re-use it on many images
@@ -200,11 +214,14 @@ class Trainer:
             cam = GradCAM(model=self.model, target_layers=target_layers, use_cuda=True)
 
         for el in data:
-            imgs, transformed_imgs, array_imgs, csegs, ksegs, ys = [], [], [], [], [], []
+            imgs, transformed_imgs, transformed_masks, array_imgs, csegs, ksegs, ys = [], [], [], [], [], [], []
 
             for i in range(len(data[el])):
                 # open images and convert to rgb if needed
-                img = process_image(self.config['data_path'] + data[el][i][0])
+                img_path = data[el][i][0]
+                mask_path = data[el][i][2]
+                img = process_image(self.config['data_path'] + img_path)
+                mask = process_mask(self.config['data_path'] + mask_path)
 
                 # append img, cseg path, kseg path and y
                 imgs.append(img)
@@ -212,9 +229,12 @@ class Trainer:
                 ksegs.append(self.config['data_path'] + data[el][i][2])
                 ys.append(data[el][i][3])
 
-                # create tensor of image
-                transformed_img = self.config['data_transforms']['valid'](image=np.asarray(img))['image']
+                # create tensor of image and mask
+                transformed = self.config['data_transforms']['valid'](image=np.asarray(img), mask=mask)
+                transformed_img = transformed['image']
+                transformed_mask = transformed['mask']
                 transformed_imgs.append(transformed_img)
+                transformed_masks.append(transformed_mask)
 
                 # create np array of image
                 array_img = np.array(img.resize((224, 224))) / 255
@@ -238,16 +258,24 @@ class Trainer:
             # plot images
             fig, axes = plt.subplots(nrows=len(ys), ncols=4, figsize=(12.1, 3.1 * len(ys)))
 
+            # counter for total attention accuracy
+            total_attn_acc = []
+
             if len(ys) > 1:
                 for i in tqdm(range(len(ys))):
                     # select grayscale_cam for the image in the batch:
                     visualization = show_cam_on_image(array_imgs[i], grayscale_cam[i, :], use_rgb=True)
 
+                    # calculate attention accuracy
+                    attn_acc = attention_accuracy(grayscale_cam[i], transformed_masks[i].numpy())
+                    total_attn_acc.append(attn_acc)
+
                     # set titles
-                    axes[i, 0].set_title(f'Original {"surgery" if ys[i] == 1 else "no surgery"}')
+                    axes[i, 0].set_title(f'Original {"surgery" if ys[i] == 1 else "no surgery"} '
+                                         f'{round(y_probs[i].item(), 2)}')
                     axes[i, 1].set_title('Cseg')
                     axes[i, 2].set_title('Kseg')
-                    axes[i, 3].set_title(f'GradCAM {round(y_probs[i].item(), 2)}')
+                    axes[i, 3].set_title(f'GradCAM {round(attn_acc, 2)}')
 
                     # plot images
                     axes[i, 0].imshow(imgs[i])
@@ -258,11 +286,15 @@ class Trainer:
                 # select grayscale_cam for the image in the batch:
                 visualization = show_cam_on_image(array_imgs[0], grayscale_cam[0, :], use_rgb=True)
 
+                # calculate attention accuracy
+                attn_acc = attention_accuracy(grayscale_cam[0], transformed_masks[0].numpy())
+                total_attn_acc.append(attn_acc)
+
                 # set titles
-                axes[0].set_title(f'Original {"surgery" if ys[0] == 1 else "no surgery"}')
+                axes[0].set_title(f'Original {"surgery" if ys[0] == 1 else "no surgery"} {round(y_probs[0].item(), 2)}')
                 axes[1].set_title('Cseg')
                 axes[2].set_title('Kseg')
-                axes[3].set_title(f'GradCAM {round(y_probs[0].item(), 2)}')
+                axes[3].set_title(f'GradCAM {round(attn_acc, 2)}')
 
                 # plot images
                 axes[0].imshow(imgs[0])
@@ -275,6 +307,7 @@ class Trainer:
             plt.subplots_adjust(wspace=0.2, hspace=0.1)
 
             wandb.log({f'{el}': wandb.Image(plt)})
+            wandb.log({f'{el}_attn_acc': sum(total_attn_acc) / len(total_attn_acc)})
 
         # calculate and plot AUROC for other datasets
         for el in data_loaders:
