@@ -20,6 +20,11 @@ class AttentionLoss(nn.Module):
         grayscale_cam = self.cam(X, y)
 
         # calculate loss
-        loss = torch.sum((1 - mask) * grayscale_cam) / X.shape[0] / X.shape[2] / X.shape[3]
+        n, h, w = X.shape[0], X.shape[2], X.shape[3]
+        loss = torch.sum(torch.where(
+            torch.sum(torch.sum(mask, dim=1), dim=1) == 0,
+            0,
+            torch.sum(torch.sum((grayscale_cam - mask) ** 2, dim=1), dim=1)
+        )) / n / h / w
 
         return loss
