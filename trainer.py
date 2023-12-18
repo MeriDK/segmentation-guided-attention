@@ -15,7 +15,7 @@ from pytorch_grad_cam.utils.model_targets import ClassifierOutputTarget, BinaryC
 from pytorch_grad_cam.utils.image import show_cam_on_image
 import matplotlib.pyplot as plt
 from PIL import Image
-from utils import reshape_transform, attention_accuracy
+from utils import reshape_transform, attention_accuracy, attention_metrics
 from dataset import process_mask
 
 
@@ -259,23 +259,31 @@ class Trainer:
             fig, axes = plt.subplots(nrows=len(ys), ncols=4, figsize=(12.1, 3.1 * len(ys)))
 
             # counter for total attention accuracy
-            total_attn_acc = []
+            total_attn_scores = []
+            total_attn_metrics = {'accuracy': [], 'precision': [], 'recall': [], 'f1': []}
 
             if len(ys) > 1:
                 for i in tqdm(range(len(ys))):
                     # select grayscale_cam for the image in the batch:
                     visualization = show_cam_on_image(array_imgs[i], grayscale_cam[i, :], use_rgb=True)
 
-                    # calculate attention accuracy
-                    attn_acc = attention_accuracy(grayscale_cam[i], transformed_masks[i].numpy())
-                    total_attn_acc.append(attn_acc)
+                    # calculate attention score
+                    attn_score = attention_accuracy(grayscale_cam[i], transformed_masks[i].numpy())
+                    attn_accuracy, attn_precision, attn_recall, attn_f1 = attention_metrics(grayscale_cam[i], transformed_masks[i].numpy())
+
+                    # save metrics
+                    total_attn_scores.append(attn_score)
+                    total_attn_metrics['accuracy'].append(attn_accuracy)
+                    total_attn_metrics['precision'].append(attn_precision)
+                    total_attn_metrics['recall'].append(attn_recall)
+                    total_attn_metrics['f1'].append(attn_f1)
 
                     # set titles
                     axes[i, 0].set_title(f'Original {"surgery" if ys[i] == 1 else "no surgery"} '
                                          f'{round(y_probs[i].item(), 2)}')
                     axes[i, 1].set_title('Cseg')
                     axes[i, 2].set_title('Kseg')
-                    axes[i, 3].set_title(f'GradCAM {round(attn_acc, 2)}')
+                    axes[i, 3].set_title(f'GradCAM {round(attn_score, 2)}')
 
                     # plot images
                     axes[i, 0].imshow(imgs[i])
@@ -286,15 +294,22 @@ class Trainer:
                 # select grayscale_cam for the image in the batch:
                 visualization = show_cam_on_image(array_imgs[0], grayscale_cam[0, :], use_rgb=True)
 
-                # calculate attention accuracy
-                attn_acc = attention_accuracy(grayscale_cam[0], transformed_masks[0].numpy())
-                total_attn_acc.append(attn_acc)
+                # calculate attention score
+                attn_score = attention_accuracy(grayscale_cam[0], transformed_masks[0].numpy())
+                total_attn_scores.append(attn_score)
+
+                # calculate metrics
+                attn_accuracy, attn_precision, attn_recall, attn_f1 = attention_metrics(grayscale_cam[i], transformed_masks[i].numpy())
+                total_attn_metrics['accuracy'].append(attn_accuracy)
+                total_attn_metrics['precision'].append(attn_precision)
+                total_attn_metrics['recall'].append(attn_recall)
+                total_attn_metrics['f1'].append(attn_f1)
 
                 # set titles
                 axes[0].set_title(f'Original {"surgery" if ys[0] == 1 else "no surgery"} {round(y_probs[0].item(), 2)}')
                 axes[1].set_title('Cseg')
                 axes[2].set_title('Kseg')
-                axes[3].set_title(f'GradCAM {round(attn_acc, 2)}')
+                axes[3].set_title(f'GradCAM {round(attn_score, 2)}')
 
                 # plot images
                 axes[0].imshow(imgs[0])
@@ -306,8 +321,15 @@ class Trainer:
             [axi.set_axis_off() for axi in axes.ravel()]
             plt.subplots_adjust(wspace=0.2, hspace=0.1)
 
+            # log plot
             wandb.log({f'{el}': wandb.Image(plt)})
-            wandb.log({f'{el}_attn_acc': sum(total_attn_acc) / len(total_attn_acc)})
+
+            # log attention score
+            wandb.log({f'{el}_attn_score': sum(total_attn_scores) / len(total_attn_scores)})
+
+            # log attention metrics
+            for key in total_attn_metrics:
+                wandb.log({f'{el}_attn_{key}': sum(total_attn_metrics[key]) / len(total_attn_metrics[key])})
 
         # calculate and plot AUROC for other datasets
         for el in data_loaders:

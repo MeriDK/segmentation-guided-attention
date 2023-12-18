@@ -148,3 +148,27 @@ def attention_accuracy(gcam, mask):
         attn_acc = (attn_acc1 + attn_acc2) / 2
 
     return attn_acc.item()
+
+
+def attention_metrics(gcam, mask):
+    y_true = mask
+    y_pred = torch.round(gcam)
+
+    # True positives, false positives, false negatives
+    tp = (y_true * y_pred).sum().to(torch.float32)
+    fp = ((1 - y_true) * y_pred).sum().to(torch.float32)
+    fn = (y_true * (1 - y_pred)).sum().to(torch.float32)
+    tn = ((1 - y_true) * (1 - y_pred)).sum().to(torch.float32)
+
+    # Precision and recall calculations
+    precision = tp / (tp + fp + 1e-7)  # Adding a small epsilon to avoid division by zero
+    recall = tp / (tp + fn + 1e-7)
+
+    # F1 score calculation
+    f1 = 2 * (precision * recall) / (precision + recall + 1e-7)
+
+    # Accuracy calculation
+    accuracy = (tp + tn) / (tp + fp + fn + tn + 1e-7)
+
+    return accuracy, precision, recall, f1
+

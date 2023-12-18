@@ -30,13 +30,13 @@ def run_experiment():
 
     # all changeable parameters should be specified here
     wandb.config.update({
-        'batch_size': 32,
+        'batch_size': 128,
         'num_epochs': 30,
         'threshold': 0.5,
         'loss': 'BCEAttention',     # 'BCE' 'AttentionLoss' 'BCEAttention'
-        'model_name': 'resnet50',   # 'swin'/'vit' + '_'  + 'small', 'tiny', 'base' || 'resnet' + '18'/'50'
-        'lr': 0.01,
-        'weight_decay': 0.001,
+        'model_name': 'resnet18',   # 'swin'/'vit' + '_'  + 'small', 'tiny', 'base' || 'resnet' + '18'/'50'
+        'lr': 0.001,
+        'weight_decay': 0.1,
         'gamma': 0.85,
         'freeze': False,
         'freeze_until': 'layer3',
@@ -45,7 +45,7 @@ def run_experiment():
         'data_transforms': data_transforms,
         'data_path': '/home/mrizhko/hn_miccai/data/',
         'data_type': '_seg_only',    # '_seg' / '_seg_only' / '_seg_n_seg_only'
-        'save_weights': True,
+        'save_weights': False,
         'weights_path': ''  # '' / '/home/mrizhko/hn_miccai/weights/model.pth'
     })
 
@@ -73,7 +73,7 @@ def run_experiment():
 if __name__ == '__main__':
 
     # init wandb
-    wandb.init(project="hn_miccai_final_eval", entity="meridk")
+    wandb.init(project='hn-thesis', entity='meridk')
 
     # run experiment
     run_experiment()

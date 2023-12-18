@@ -83,14 +83,14 @@ def run_evaluation(run_path):
 
 if __name__ == '__main__':
 
-    run_path = 'hn_miccai_final_eval/runs/pq9gvq01'
+    run_path = 'hn-thesis/runs/eb4rpz5l'
     print(f'Evaluating run {run_path}')
 
     # restore wandb config
     config_path = wandb.restore('config.yaml', run_path=run_path)
 
     # init wandb using config above
-    wandb.init(project='hn_miccai_final_eval', entity='meridk', config=config_path.name)
+    wandb.init(project='hn-thesis', entity='meridk', config=config_path.name)
 
     # delete config file
     os.remove(config_path.name)
